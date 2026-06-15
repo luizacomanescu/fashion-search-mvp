@@ -10,3 +10,8 @@ venv/
 .DS_Store
 
 *.log
+
+data/raw/ 
+data/processed/
+
+index/
