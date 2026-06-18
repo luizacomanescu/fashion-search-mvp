@@ -26,7 +26,12 @@ for _, row in df.iterrows():
         "name": row.get("productDisplayName"),
         "category": row.get("articleType"),
         "gender": row.get("gender"),
-        "color": row.get("baseColour")
+        "masterCategory": row.get("masterCategory"),
+        "subCategory": row.get("subCategory"),
+        "articleType": row.get("articleType"),
+        "color": row.get("baseColour"),
+        "season": row.get("season"),
+        "usage": row.get("usage")
     })
 
 # optional: limit for MVP speed

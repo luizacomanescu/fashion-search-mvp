@@ -17,3 +17,5 @@ streamlit
 pandas
 tqdm
 requests
+
+scikit-learn

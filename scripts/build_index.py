@@ -6,6 +6,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from app.model import get_image_embedding
+from app.model import get_text_embedding
 
 META_PATH = "data/processed/meta.json"
 INDEX_PATH = "index/faiss.index"
@@ -24,6 +25,9 @@ data = data[:200]
 embeddings = []
 meta = []
 
+def build_text(item):
+    return f"{item['name']} {item['category']} {item.get('color', '')} {item.get('gender', '')}"
+
 # -------------------
 # Build embeddings
 # -------------------
@@ -35,7 +39,11 @@ for item in tqdm(data):
         print("Processing:", img_path)
 
         img = Image.open(img_path).convert("RGB")
-        emb = get_image_embedding(img)
+        
+        image_emb = get_image_embedding(img)
+        text_emb = get_text_embedding(build_text(item))
+
+        emb = (image_emb + text_emb) / 2
 
         embeddings.append(emb)
         meta.append(item)
@@ -47,6 +55,7 @@ for item in tqdm(data):
 # Convert to numpy
 # -------------------
 embeddings = np.vstack(embeddings).astype("float32")
+np.save("index/embeddings.npy", embeddings)
 
 # normalize for cosine similarity
 faiss.normalize_L2(embeddings)
@@ -69,3 +78,6 @@ with open(OUT_META_PATH, "w") as f:
 
 print("✅ FAISS index built!")
 print("Items indexed:", len(meta))
+
+import sys
+sys.exit(0)
