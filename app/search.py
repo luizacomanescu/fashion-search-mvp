@@ -13,6 +13,11 @@ from app.model import get_image_embedding
 from app.attribute_extractor import extract_attributes
 from app.reranker import score_fn
 
+from pathlib import Path
+
+IMAGE_BASE_URL = "http://localhost:8000/images"
+IMAGE_DIR = "data/raw/fashion-product-images-dataset/images"
+
 INDEX_PATH = "index/faiss.index"
 META_PATH = "index/meta.json"
 TEST_JPG = "data/images/whiteTshirt.jpg"
@@ -22,9 +27,18 @@ index = faiss.read_index(INDEX_PATH)
 with open(META_PATH, "r") as f:
     meta = json.load(f)
 
+def build_image_url(item):
+    raw_path = item.get("image") or item.get("image_path")
 
-def search_similar(image_path, top_k=5):
-    img = Image.open(image_path).convert("RGB")
+    if not raw_path:
+        return None
+
+    filename = Path(raw_path).name
+    return f"{IMAGE_BASE_URL}/{filename}"    
+
+
+def search_similar(image, top_k=5):
+    img = image.convert("RGB")
 
     query_vec = get_image_embedding(img.copy()).astype("float32")
     query_vec = np.expand_dims(query_vec, axis=0)
@@ -82,7 +96,19 @@ def search_similar(image_path, top_k=5):
         reverse=True
     )
 
-    return [x["item"] for x in ranked[:min(top_k, len(candidates))]]
+    results = []
+
+    for x in ranked[:top_k]:
+        item = x["item"]
+
+        results.append({
+            "name": item.get("productDisplayName") or item.get("name"),
+            "category": item.get("articleType") or item.get("category"),
+            "color": item.get("baseColour") or item.get("color"),
+            "image": build_image_url(item)
+        })
+
+    return results
 
 
 
