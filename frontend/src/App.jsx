@@ -1,5 +1,7 @@
 import { useRef, useState, useCallback } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 const STORES = ["All", "ASOS", "Zara", "H&M", "Mango", "& Other Stories"];
 
 function SparkleIcon() {
@@ -118,10 +120,15 @@ export default function App() {
 
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch("http://localhost:8000/search", {
-      method: "POST",
-      body: formData,
-    });
+
+    const [res] = await Promise.all([
+      fetch(`${API_URL}/search`, {
+        method: "POST",
+        body: formData,
+      }),
+      new Promise(r => setTimeout(r, 1000)) // minimum 1 second loading
+    ]);
+    
     const data = await res.json();
     setResults(data);
     setLoading(false);
