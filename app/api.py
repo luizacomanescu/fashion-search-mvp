@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi.staticfiles import StaticFiles
 
-IMAGE_DIR = "data/raw/fashion-product-images-dataset/images"
+# IMAGE_DIR = "data/raw/fashion-product-images-dataset/images"
 
 app = FastAPI()
 
@@ -19,11 +19,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount(
-    "/images",
-    StaticFiles(directory=IMAGE_DIR),
-    name="images",
-)
+# app.mount(
+#     "/images",
+#     StaticFiles(directory=IMAGE_DIR),
+#     name="images",
+# )
 
 @app.post("/search")
 async def search(file: UploadFile = File(...)):
