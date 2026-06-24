@@ -92,7 +92,7 @@ function ResultCard({ item, index }) {
         <p className="card-name">{item.name}</p>
         <div className="card-footer">
           <span className="card-price">{item.price}</span>
-          <a href="#" className="card-link" onClick={e => e.preventDefault()}>
+          <a href={item.url} className="card-link" target="_blank" rel="noopener noreferrer">
             View <ExternalIcon />
           </a>
         </div>
@@ -116,17 +116,15 @@ export default function App() {
     setLoading(true);
     setResults([]);
 
-    // Simulate API call — replace with real fetch
-    await new Promise(r => setTimeout(r, 1400));
-    setResults(MOCK_RESULTS);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("http://localhost:8000/search", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    setResults(data);
     setLoading(false);
-
-    // Real call would be:
-    // const formData = new FormData();
-    // formData.append("file", file);
-    // const res = await fetch("http://localhost:8000/search", { method: "POST", body: formData });
-    // const data = await res.json();
-    // setResults(data);
   }, []);
 
   const handleFileChange = (e) => processFile(e.target.files?.[0]);
