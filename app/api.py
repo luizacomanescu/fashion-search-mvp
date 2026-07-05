@@ -20,3 +20,12 @@ async def search(file: UploadFile = File(...)):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     results = search_similar(image)
     return results
+
+@app.get("/health")
+async def health():
+    import os
+    return {
+        "index_exists": os.path.exists("index/faiss.index"),
+        "meta_exists": os.path.exists("index/meta.json"),
+        "embeddings_exists": os.path.exists("index/embeddings.npy"),
+    }
