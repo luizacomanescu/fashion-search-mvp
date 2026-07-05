@@ -6,25 +6,20 @@ from sklearn.cluster import KMeans
 from app.model import predict_clip_labels
 
 ARTICLE_TYPES = [
-    "Tshirts",
-    "Shirts",
-    "Kurtas",
-    "Tops",
+    "T-shirt",
+    "Shirt",
+    "Blouse",
+    "Top",
+    "Cardigan",
+    "Sweater",
     "Jeans",
     "Trousers",
-    "Track Pants",
     "Shorts",
-    "Leggings",
-    "Skirts",
-    "Dresses",
-    "Sweatshirts",
-    "Sweaters",
-    "Jackets",
-    "Tunics",
-    "Kurtis",
-    "Sarees",
-    "Nightdress",
-    "Night suits"
+    "Skirt",
+    "Dress",
+    "Jacket",
+    "Coat",
+    "Blazer",
 ]
 
 GENDER_LABELS = [
@@ -166,13 +161,14 @@ def detect_color(image, k=3):
     return best_label
 
 def extract_attributes(image):
-
-    article_type = predict_clip_labels(image, ARTICLE_TYPES)
-    gender = predict_clip_labels(image, GENDER_LABELS)
+    subtype = predict_clip_labels(image, ARTICLE_TYPES)
+    gender_raw = predict_clip_labels(image, GENDER_LABELS)
     color = detect_color(image)
 
+    gender = "women" if "women" in gender_raw else "men" if "men" in gender_raw else "unisex"
+
     return {
-        "articleType": article_type,
+        "subtype": subtype,
         "gender": gender,
         "color": color
     }

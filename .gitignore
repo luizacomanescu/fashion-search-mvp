@@ -11,7 +11,4 @@ venv/
 
 *.log
 
-data/raw/ 
-data/processed/
-
-index/
+data/

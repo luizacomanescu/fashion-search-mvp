@@ -1,43 +1,98 @@
-import os
-import pandas as pd
+# scripts/prepare_data.py
 import json
+import os
 
-RAW_DIR = "data/raw/fashion-product-images-dataset"
-IMAGES_DIR = os.path.join(RAW_DIR, "images")
-CSV_PATH = os.path.join(RAW_DIR, "styles.csv")
+STORE_CATEGORY_SUBTYPE = {
+    # & Other Stories
+    "women-dresses": "Dress",
+    "women-tops": "Top",
+    "women-trousers": "Trousers",
+    "women-jeans": "Jeans",
+    "women-coats": "Coat",
+    "women-skirts": "Skirt",
+    "women-knitwear": "Cardigan",
+    "men-tshirts": "T-shirt",
+    "men-shirts": "Shirt",
+    "men-trousers": "Trousers",
+    "men-jeans": "Jeans",
+    "men-coats": "Coat",
+    "men-jumpers": "Cardigan",
 
-OUT_PATH = "data/processed/meta.json"
-os.makedirs("data/processed", exist_ok=True)
+    # Zara
+    "women-tshirts": "T-shirt",
+    "women-shirts": "Shirt",
+    "women-jackets": "Jacket",
+    "women-shorts": "Shorts",
+    "women-blazers": "Blazer",
+    "men-jackets": "Jacket",
+    "men-overshirts": "Shirt",
+    "men-blazers": "Blazer",
+    "men-sweatshirts": "Sweatshirt",
+    "men-shorts": "Shorts",
+    "men-knitwear": "Cardigan",
+}
 
-df = pd.read_csv(CSV_PATH, on_bad_lines="skip")
+SUBTYPE_TO_GROUP = {
+    "T-shirt": "tops", "Shirt": "tops", "Top": "tops",
+    "Cardigan": "tops",
+    "Jeans": "bottoms", "Trousers": "bottoms",
+    "Skirt": "skirts",
+    "Dress": "dresses",
+    "Coat": "outerwear",
+}
 
-items = []
+SOURCES = [
+    "data/raw/stories/products.json",
+    "data/raw/zara/products.json",
+]
 
-for _, row in df.iterrows():
-    img_id = str(row["id"]) + ".jpg"
-    img_path = os.path.join(IMAGES_DIR, img_id)
+def get_gender(raw_category):
+    if raw_category.startswith("women-"):
+        return "women"
+    elif raw_category.startswith("men-"):
+        return "men"
+    return "unisex"
 
-    if not os.path.exists(img_path):
-        continue
+def main():
+    all_products = []
 
-    items.append({
-        "id": int(row["id"]),
-        "image": img_path,
-        "name": row.get("productDisplayName"),
-        "category": row.get("articleType"),
-        "gender": row.get("gender"),
-        "masterCategory": row.get("masterCategory"),
-        "subCategory": row.get("subCategory"),
-        "articleType": row.get("articleType"),
-        "color": row.get("baseColour"),
-        "season": row.get("season"),
-        "usage": row.get("usage")
-    })
+    for path in SOURCES:
+        if not os.path.exists(path):
+            print(f"Missing: {path}")
+            continue
 
-# optional: limit for MVP speed
-items = items[:2000]
+        with open(path) as f:
+            items = json.load(f)
 
-with open(OUT_PATH, "w") as f:
-    json.dump(items, f)
+        for item in items:
+            if not item.get("image") or not item.get("name"):
+                continue
 
-print(f"Prepared dataset: {len(items)} items")
+            raw_cat = item.get("category", "")
+            subtype = STORE_CATEGORY_SUBTYPE.get(raw_cat, "other")
+            group = SUBTYPE_TO_GROUP.get(subtype, "other")
+            gender = get_gender(raw_cat)
+
+            all_products.append({
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "subtype": subtype,
+                "group": group,
+                "gender": gender,
+                "color": item.get("color", ""),
+                "price": item.get("price", ""),
+                "store": item.get("store", ""),
+                "url": item.get("url"),
+                "image": item.get("image"),
+                "image_path": item.get("image_path"),
+            })
+
+        print(f"Loaded {len(items)} from {path}")
+
+    with open("data/processed/meta.json", "w") as f:
+        json.dump(all_products, f, indent=2)
+
+    print(f"\nTotal: {len(all_products)} products saved to data/processed/meta.json")
+
+if __name__ == "__main__":
+    main()
