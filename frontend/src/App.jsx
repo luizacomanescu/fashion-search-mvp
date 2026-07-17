@@ -1,6 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// In production (Docker build) the API is served same-origin, so the base
+// must be relative. In `vite dev` the backend runs on :8000, so default there.
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 const GENDERS = ["women", "men", "unisex"];
 
@@ -593,10 +597,14 @@ export default function App() {
       `}</style>
 
       <nav className="nav">
-        <div className="nav-logo">
+        <a
+          className="nav-logo"
+          href="/"
+          style={{ cursor: "pointer", textDecoration: "none" }}
+        >
           <div className="nav-logo-dot" />
           Modeva
-        </div>
+        </a>
         <span className="nav-pill">Visual Search</span>
       </nav>
 

@@ -234,16 +234,28 @@ export default function ModevaLanding() {
         .fade-up-3 { animation-delay: 0.3s; }
         .fade-up-4 { animation-delay: 0.4s; }
         @media (max-width: 768px) {
-          .hero-inner { flex-direction: column !important; text-align: center; align-items: center !important; }
+          .lp-nav { padding: 0 20px !important; }
+          .lp-nav-links { gap: 16px !important; }
+          .lp-nav-secondary { display: none !important; }
+          .lp-section { padding-left: 20px !important; padding-right: 20px !important; }
+          .lp-hero { padding-top: 56px !important; padding-bottom: 48px !important; }
+          .hero-inner { flex-direction: column !important; text-align: center; align-items: center !important; gap: 40px !important; }
           .hero-text { align-items: center !important; }
+          .hero-headline { font-size: 38px !important; }
           .steps-grid { grid-template-columns: 1fr !important; }
           .features-grid { grid-template-columns: 1fr !important; }
-          .hero-headline { font-size: 36px !important; }
+          .lp-card { padding: 28px 20px !important; gap: 28px !important; flex-direction: column !important; }
+          .cta-head { font-size: 32px !important; }
+          .lp-footer { padding: 24px 20px !important; flex-direction: column !important; align-items: flex-start !important; }
+        }
+        @media (max-width: 380px) {
+          .hero-headline { font-size: 32px !important; }
+          .lp-section { padding-left: 16px !important; padding-right: 16px !important; }
         }
       `}</style>
 
       {/* NAV */}
-      <nav style={{
+      <nav className="lp-nav" style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 48px", height: 64,
         borderBottom: `1px solid ${BORDER}`,
@@ -251,13 +263,13 @@ export default function ModevaLanding() {
         background: "rgba(10,11,14,0.92)", backdropFilter: "blur(10px)",
         zIndex: 100,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <a href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", cursor: "pointer" }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
           <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", color: "#e8e4de" }}>MODEVA</span>
-        </div>
-        <div style={{ display: "flex", gap: 32, alignItems: "center" }}>
-          <a href="#how" style={{ fontSize: 13, color: "#6b6d77", textDecoration: "none" }}>How it works</a>
-          <a href="#features" style={{ fontSize: 13, color: "#6b6d77", textDecoration: "none" }}>Features</a>
+        </a>
+        <div className="lp-nav-links" style={{ display: "flex", gap: 32, alignItems: "center" }}>
+          <a className="lp-nav-secondary" href="#how" style={{ fontSize: 13, color: "#6b6d77", textDecoration: "none" }}>How it works</a>
+          <a className="lp-nav-secondary" href="#features" style={{ fontSize: 13, color: "#6b6d77", textDecoration: "none" }}>Features</a>
           <a href="#download" style={{
             fontSize: 13, fontWeight: 500, color: BG,
             background: ACCENT, padding: "8px 18px", borderRadius: 8,
@@ -267,7 +279,7 @@ export default function ModevaLanding() {
       </nav>
 
       {/* HERO */}
-      <section style={{ padding: "100px 48px 80px", maxWidth: 1100, margin: "0 auto" }}>
+      <section className="lp-section lp-hero" style={{ padding: "100px 48px 80px", maxWidth: 1100, margin: "0 auto" }}>
         <div className="hero-inner" style={{ display: "flex", alignItems: "center", gap: 80, justifyContent: "space-between" }}>
           
           {/* Text */}
@@ -345,7 +357,7 @@ export default function ModevaLanding() {
       <div style={{ borderTop: `1px solid ${BORDER}` }} />
 
       {/* HOW IT WORKS */}
-      <section id="how" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      <section id="how" className="lp-section" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 56, textAlign: "center" }}>
           <p style={{ fontSize: 11, letterSpacing: "0.16em", color: ACCENT, textTransform: "uppercase", marginBottom: 12 }}>How it works</p>
           <h2 style={{ fontSize: 36, fontWeight: 300, letterSpacing: "-0.03em", color: "#e8e4de" }}>
@@ -363,8 +375,8 @@ export default function ModevaLanding() {
       <div style={{ borderTop: `1px solid ${BORDER}` }} />
 
       {/* PROBLEM/SOLUTION */}
-      <section style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{
+      <section className="lp-section" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
+        <div className="lp-card" style={{
           background: CARD_BG, border: `1px solid ${BORDER}`,
           borderRadius: 24, padding: "64px 48px",
           display: "flex", gap: 80, alignItems: "center", flexWrap: "wrap",
@@ -397,7 +409,7 @@ export default function ModevaLanding() {
       </section>
 
       {/* FEATURES */}
-      <section id="features" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      <section id="features" className="lp-section" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 56, textAlign: "center" }}>
           <p style={{ fontSize: 11, letterSpacing: "0.16em", color: ACCENT, textTransform: "uppercase", marginBottom: 12 }}>Features</p>
           <h2 style={{ fontSize: 36, fontWeight: 300, letterSpacing: "-0.03em", color: "#e8e4de" }}>Fashion search, finally done right</h2>
@@ -413,9 +425,9 @@ export default function ModevaLanding() {
       <div style={{ borderTop: `1px solid ${BORDER}` }} />
 
       {/* CTA / DOWNLOAD */}
-      <section id="download" style={{ padding: "100px 48px", maxWidth: 1100, margin: "0 auto", textAlign: "center" }}>
+      <section id="download" className="lp-section" style={{ padding: "100px 48px", maxWidth: 1100, margin: "0 auto", textAlign: "center" }}>
         <p style={{ fontSize: 11, letterSpacing: "0.16em", color: ACCENT, textTransform: "uppercase", marginBottom: 16 }}>Get started</p>
-        <h2 style={{ fontSize: 44, fontWeight: 300, letterSpacing: "-0.04em", color: "#e8e4de", marginBottom: 16, lineHeight: 1.1 }}>
+        <h2 className="cta-head" style={{ fontSize: 44, fontWeight: 300, letterSpacing: "-0.04em", color: "#e8e4de", marginBottom: 16, lineHeight: 1.1 }}>
           Your wardrobe starts<br />with a photo.
         </h2>
         <p style={{ fontSize: 15, color: "#6b6d77", marginBottom: 48 }}>
@@ -464,7 +476,7 @@ export default function ModevaLanding() {
       </section>
 
       {/* FOOTER */}
-      <footer style={{
+      <footer className="lp-footer" style={{
         borderTop: `1px solid ${BORDER}`,
         padding: "32px 48px",
         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16,

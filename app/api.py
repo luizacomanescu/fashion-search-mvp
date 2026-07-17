@@ -1,8 +1,10 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+import pillow_heif  # enables PIL to decode HEIC/HEIF (iPhone photos)
+pillow_heif.register_heif_opener()
 import io
 import os
 from typing import Optional
@@ -22,7 +24,13 @@ app.add_middleware(
 @app.post("/search")
 async def search(file: UploadFile = File(...), gender: Optional[str] = None):
     image_bytes = await file.read()
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    try:
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported or corrupt image. Please upload a JPG, PNG, or HEIC photo.",
+        )
     results = search_similar(image, gender_override=gender)
     return results
 
