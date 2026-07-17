@@ -1,8 +1,14 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const STORES = ["All", "ASOS", "Zara", "H&M", "Mango", "& Other Stories"];
+const GENDERS = ["women", "men", "unisex"];
+
+const CURRENCY_SYMBOLS = { GBP: "£", USD: "$", EUR: "€" };
+function priceLabel(item) {
+  const sym = CURRENCY_SYMBOLS[item.currency_code] || "";
+  return sym ? `${sym}${item.price}` : item.price;
+}
 
 function SparkleIcon() {
   return (
@@ -23,28 +29,11 @@ function CameraIcon() {
   );
 }
 
-function ArrowRightIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="5" y1="12" x2="19" y2="12"/>
-      <polyline points="12 5 19 12 12 19"/>
-    </svg>
-  );
-}
-
 function ResetIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="1 4 1 10 7 10"/>
       <path d="M3.51 15a9 9 0 1 0 .49-4.65"/>
-    </svg>
-  );
-}
-
-function HeartIcon({ filled }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
     </svg>
   );
 }
@@ -60,7 +49,6 @@ function ExternalIcon() {
 }
 
 function ResultCard({ item, index }) {
-  const [saved, setSaved] = useState(false);
   return (
     <div
       className="result-card"
@@ -69,13 +57,6 @@ function ResultCard({ item, index }) {
       <div className="card-image-wrap">
         <img src={item.image} alt={item.name} className="card-image" />
         <div className="card-match">{item.match}%</div>
-        <button
-          className={`card-save ${saved ? "saved" : ""}`}
-          onClick={() => setSaved(s => !s)}
-          aria-label={saved ? "Remove from saved" : "Save item"}
-        >
-          <HeartIcon filled={saved} />
-        </button>
       </div>
       <div className="card-body">
         <div className="card-meta">
@@ -84,7 +65,7 @@ function ResultCard({ item, index }) {
         </div>
         <p className="card-name">{item.name}</p>
         <div className="card-footer">
-          <span className="card-price">{item.price}</span>
+          <span className="card-price">{priceLabel(item)}</span>
           <a href={item.url} className="card-link" target="_blank" rel="noopener noreferrer">
             View <ExternalIcon />
           </a>
@@ -101,19 +82,33 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [activeStore, setActiveStore] = useState("All");
+  const [gender, setGender] = useState(null); // null = search all (women+men)
+  const [file, setFile] = useState(null);
+  const [availableStores, setAvailableStores] = useState([]);
 
-  const processFile = useCallback(async (file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    setImageUrl(url);
+  // Load the stores we actually have products for, so the UI never
+  // advertises a store the catalogue can't deliver.
+  useEffect(() => {
+    fetch(`${API_URL}/stores`)
+      .then(r => r.json())
+      .then(setAvailableStores)
+      .catch(() => setAvailableStores([]));
+  }, []);
+
+  const doSearch = useCallback(async (fileObj, genderValue) => {
     setLoading(true);
     setResults([]);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", fileObj);
+
+    // null = search all genders; otherwise pass the explicit choice so the
+    // backend filters to that gender (+ unisex). Unisex is sent explicitly
+    // so it returns 0 until we actually stock unisex products.
+    const qs = genderValue ? `?gender=${genderValue}` : "";
 
     const [res] = await Promise.all([
-      fetch(`${API_URL}/search`, {
+      fetch(`${API_URL}/search${qs}`, {
         method: "POST",
         body: formData,
       }),
@@ -124,6 +119,18 @@ export default function App() {
     setResults(data);
     setLoading(false);
   }, []);
+
+  const processFile = useCallback(async (fileObj) => {
+    if (!fileObj || !fileObj.type.startsWith("image/")) return;
+    setFile(fileObj);
+    setImageUrl(URL.createObjectURL(fileObj));
+    await doSearch(fileObj, gender);
+  }, [gender, doSearch]);
+
+  const changeGender = useCallback((g) => {
+    setGender(g);
+    if (file) doSearch(file, g);
+  }, [file, doSearch]);
 
   const handleFileChange = (e) => processFile(e.target.files?.[0]);
 
@@ -140,12 +147,18 @@ export default function App() {
     setImageUrl(null);
     setResults([]);
     setActiveStore("All");
+    setGender(null); // back to "search all" on new search
+    setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const filtered = activeStore === "All"
     ? results
     : results.filter(r => r.store === activeStore);
+
+  // Results-page filter: only stores present in THIS result set (so a
+  // store never shows a tab that returns nothing for the current search).
+  const resultStores = ["All", ...new Set(results.map(r => r.store).filter(Boolean))];
 
   return (
     <>
@@ -322,6 +335,17 @@ export default function App() {
           padding: 4px 10px;
           border: 1px solid #1C1E24;
           border-radius: 20px;
+        }
+        .gender-row {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .upload-view .gender-row {
+          margin-top: 28px;
         }
 
         /* ── RESULTS STATE ── */
@@ -505,22 +529,6 @@ export default function App() {
           padding: 3px 8px;
           border-radius: 20px;
         }
-        .card-save {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          width: 32px; height: 32px;
-          border-radius: 50%;
-          background: rgba(10,11,14,0.7);
-          border: 1px solid rgba(255,255,255,0.08);
-          display: flex; align-items: center; justify-content: center;
-          color: #6B6D77;
-          cursor: pointer;
-          transition: color 0.2s, background 0.2s;
-          backdrop-filter: blur(4px);
-        }
-        .card-save:hover { color: #E8E4DE; background: rgba(10,11,14,0.9); }
-        .card-save.saved { color: #E87070; }
         .card-body { padding: 14px 16px 16px; }
         .card-meta {
           display: flex;
@@ -630,12 +638,29 @@ export default function App() {
               <p className="drop-hint">JPEG, PNG, WEBP — up to 10 MB</p>
             </div>
 
-            <div className="upload-stores">
-              <span className="stores-label">Searches across</span>
-              {STORES.slice(1).map(s => (
-                <span key={s} className="store-tag">{s}</span>
-              ))}
+            <div className="gender-row">
+              <span className="stores-label">Shopping for</span>
+              <div className="filter-bar" style={{ marginBottom: 0, marginTop: 4 }}>
+                {GENDERS.map(g => (
+                  <button
+                    key={g}
+                    className={`filter-btn ${gender === g ? "active" : ""}`}
+                    onClick={() => setGender(g)}
+                  >
+                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {availableStores.length > 0 && (
+              <div className="upload-stores">
+                <span className="stores-label">Searches across</span>
+                {availableStores.map(s => (
+                  <span key={s} className="store-tag">{s}</span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -668,8 +693,22 @@ export default function App() {
               </div>
             ) : (
               <>
+                <div className="gender-row">
+                  <span className="stores-label">Shopping for</span>
+                  <div className="filter-bar" style={{ marginBottom: 0, marginTop: 4 }}>
+                    {GENDERS.map(g => (
+                      <button
+                        key={g}
+                        className={`filter-btn ${gender === g ? "active" : ""}`}
+                        onClick={() => changeGender(g)}
+                      >
+                        {g.charAt(0).toUpperCase() + g.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="filter-bar">
-                  {STORES.map(s => (
+                  {resultStores.map(s => (
                     <button
                       key={s}
                       className={`filter-btn ${activeStore === s ? "active" : ""}`}

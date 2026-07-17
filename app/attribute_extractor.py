@@ -1,171 +1,124 @@
 import torch
 import numpy as np
 from PIL import Image
-from sklearn.cluster import KMeans
 
-from app.model import predict_clip_labels
+from app.model import predict_clip_labels, predict_clip_probs
 
 ARTICLE_TYPES = [
     "T-shirt",
     "Shirt",
-    "Blouse",
     "Top",
-    "Cardigan",
-    "Sweater",
+    "Sweatshirt",
     "Jeans",
     "Trousers",
     "Shorts",
     "Skirt",
     "Dress",
     "Jacket",
-    "Coat",
-    "Blazer",
+    "Knitwear"
 ]
 
-GENDER_LABELS = [
-    "men clothing",
-    "women clothing",
-    "unisex clothing"
-]
+# Gender is weakly detectable from a garment photo (the model sees the item,
+# not the wearer). We only trust a men/women call above a confidence threshold;
+# otherwise we return None and the search stays gender-agnostic instead of
+# wrongly collapsing to unisex-only. (The proper fix is an explicit UI gender
+# selector that pre-fills from this hint.)
+GENDER_LABELS = ["men clothing", "women clothing"]
+GENDER_THRESHOLD = 0.40
 
+# Canonical color vocabulary — kept in sync with scripts/prepare_data.py
+# (COLOR_NORMALIZATION canonical outputs). Every label here MUST be a label that
+# prepare_data.py can emit, so image-detected colors are comparable to store colors
+# in the DB. Patterns (Print/Stripe) are not image-detectable and stay prepare_data-only.
 COLOR_LABELS = [
-    "Black", "White", "Blue", "Brown", "Grey", "Red", "Green", "Pink",
-    "Navy Blue", "Purple", "Silver", "Yellow", "Beige", "Gold", "Maroon",
-    "Orange", "Olive", "Multi", "Cream", "Steel", "Charcoal", "Peach",
-    "Off White", "Skin", "Lavender", "Grey Melange", "Khaki", "Magenta",
-    "Teal", "Tan", "Mustard", "Bronze", "Copper", "Turquoise Blue", "Rust",
-    "Burgundy", "Metallic", "Coffee Brown", "Mauve", "Rose", "Nude",
-    "Sea Green", "Mushroom Brown", "Taupe", "Lime Green"
+    "Black", "White", "Off White", "Ecru", "Ivory",
+    "Grey", "Charcoal", "Dark Grey", "Light Grey",
+    "Blue", "Light Blue", "Mid Blue", "Navy Blue", "Dark Blue",
+    "Brown", "Dark Brown", "Light Brown", "Camel", "Tan", "Mink", "Sand",
+    "Beige", "Taupe", "Khaki",
+    "Red", "Burgundy", "Pink", "Coral", "Rose",
+    "Green", "Dark Green", "Light Green", "Olive", "Mint",
+    "Yellow", "Mustard", "Gold", "Orange", "Rust",
+    "Purple", "Lilac", "Mauve",
+    "Multicolour"
 ]
 
-# Reference RGB values for each label (fashion-tuned)
-COLOR_REFERENCES = {
-    "Black":          (20,   20,  20),
-    "White":          (255, 255, 255),
-    "Off White":      (240, 238, 230),
-    "Cream":          (190, 175, 155),
-    "Nude":           (210, 180, 160),
-    "Skin":           (225, 195, 170),
-    "Peach":          (255, 185, 155),
-    "Rose":           (210, 145, 145),
-    "Pink":           (255, 130, 170),
-    "Magenta":        (210,   0, 130),
-    "Red":            (200,  30,  30),
-    "Rust":           (165,  60,  30),
-    "Burgundy":       (120,  20,  40),
-    "Maroon":         (100,  20,  20),
-    "Orange":         (230, 110,  30),
-    "Copper":         (180,  90,  40),
-    "Bronze":         (155, 100,  40),
-    "Gold":           (200, 165,  50),
-    "Mustard":        (185, 150,  40),
-    "Yellow":         (240, 220,  50),
-    "Lime Green":     (150, 210,  50),
-    "Olive":          (110, 120,  50),
-    "Green":          (50,  140,  50),
-    "Sea Green":      (50,  160, 110),
-    "Teal":           (30,  130, 130),
-    "Turquoise Blue": (50,  180, 180),
-    "Blue":           (50,   90, 200),
-    "Navy Blue":      (20,   30,  90),
-    "Lavender":       (170, 155, 210),
-    "Purple":         (110,  40, 160),
-    "Mauve":          (175, 120, 145),
-    "Brown":          (120,  70,  35),
-    "Coffee Brown":   (90,   55,  30),
-    "Mushroom Brown": (165, 140, 120),
-    "Taupe":          (140, 125, 110),
-    "Tan":            (180, 150, 105),
-    "Khaki":          (160, 155,  95),
-    "Beige":          (200, 180, 145),
-    "Grey":           (150, 150, 150),
-    "Grey Melange":   (175, 172, 168),
-    "Silver":         (195, 198, 200),
-    "Steel":          (110, 125, 140),
-    "Charcoal":       (65,   65,  65),
-    "Metallic":       (180, 175, 170),
-    "Multi":          (128, 128, 128),  # fallback — handle separately
-}
+# Color is classified by zero-shot CLIP (see classify_color) over this synced
+# palette — no RGB/KMeans heuristic, so it stays comparable to store colors and
+# avoids false "Multicolour"/"Metallic" from backgrounds. Patterns (Print/Stripe)
+# are not image-detectable and remain prepare_data-only.
 
 
-def detect_color(image, k=3):
-    img = image.convert("RGB").resize((64, 64))
-    pixels = np.array(img).reshape(-1, 3).astype(float)
+def classify_color(image, threshold=0.25):
+    """Zero-shot CLIP color classification over COLOR_LABELS.
+    Uses garment-anchored prompts ('a {color} garment') which score far more
+    reliably than 'a photo of {color}'. Falls back to 'Multicolour' when the
+    model is unconfident (genuinely patterned / ambiguous images).
 
-    # Remove near-white background
-    pixels = pixels[~(
-        (pixels[:, 0] > 240) &
-        (pixels[:, 1] > 240) &
-        (pixels[:, 2] > 240)
-    )]
+    Pale / low-saturation garments get weak CLIP signal, so when the average
+    saturation is very low we resolve within the neutral subset by nearest RGB
+    instead. This keeps White/Ivory/Beige correct without a confidence
+    threshold that would wrongly turn White (low-confidence) into Multicolour.
+    """
+    labels = COLOR_LABELS
+    texts = [f"a {c} garment" for c in labels]
+    probs = predict_clip_probs(image, texts=texts)
+    best_idx = int(np.argmax(probs))
+    if probs[best_idx] >= threshold:
+        return labels[best_idx]
+    return _classify_pale(image, labels)
 
-    if len(pixels) == 0:
-        return "White"
 
-    # Remove saturated background colors (greens, browns from outdoor scenes)
-    def get_saturation(p):
-        return (p.max(axis=1) - p.min(axis=1)) / (p.max(axis=1) + 1e-5)
+_NEUTRAL_LABELS = [
+    "White", "Off White", "Ecru", "Ivory", "Grey", "Charcoal",
+    "Dark Grey", "Light Grey", "Camel", "Tan", "Mink", "Sand",
+    "Beige", "Taupe", "Khaki",
+]
 
-    sat = get_saturation(pixels)
-    dominant_channel = np.argmax(pixels, axis=1)
-    green_bg = (dominant_channel == 1) & (sat > 0.2)
-    pixels = pixels[~green_bg]
 
-    if len(pixels) == 0:
-        return "White"
+def _classify_pale(image, labels):
+    """Nearest-RGB resolution within the neutral subset for low-sat images."""
+    neutral = [l for l in labels if l in _NEUTRAL_LABELS]
+    if not neutral:
+        return "Multicolour"
+    arr = np.asarray(image.convert("RGB").resize((32, 32))).reshape(-1, 3).astype(float)
+    mean = arr.mean(axis=0)
+    sat = (arr.max(axis=1) - arr.min(axis=1)).mean()  # mean per-pixel saturation
+    # anchor neutrals by simple RGB centroids (cheap, good enough for pale)
+    centroids = {
+        "White": (255, 255, 255), "Off White": (240, 238, 230), "Ecru": (210, 200, 175),
+        "Ivory": (250, 248, 235), "Grey": (150, 150, 150), "Charcoal": (65, 65, 65),
+        "Dark Grey": (90, 90, 90), "Light Grey": (200, 200, 200), "Camel": (195, 160, 110),
+        "Tan": (180, 150, 105), "Mink": (170, 140, 115), "Sand": (200, 185, 150),
+        "Beige": (200, 180, 145), "Taupe": (140, 125, 110), "Khaki": (160, 155, 95),
+    }
+    if sat < 18:  # genuinely pale/neutral -> resolve by nearest neutral RGB
+        best, best_d = "Multicolour", float("inf")
+        for l in neutral:
+            c = centroids.get(l)
+            if c is None:
+                continue
+            d = ((mean[0]-c[0])**2 + (mean[1]-c[1])**2 + (mean[2]-c[2])**2) ** 0.5
+            if d < best_d:
+                best_d, best = d, l
+        return best
+    return "Multicolour"
 
-    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
-    kmeans.fit(pixels)
-    counts = np.bincount(kmeans.labels_)
-    total = counts.sum()
 
-    # Only flag Multi if clusters are BOTH far apart AND similarly sized
-    # (true multicolor garments have balanced clusters, not shadow/highlight splits)
-    cluster_centers = kmeans.cluster_centers_
-    if k > 1:
-        for i in range(k):
-            for j in range(i + 1, k):
-                dist = (
-                    (cluster_centers[i][0] - cluster_centers[j][0]) ** 2 +
-                    (cluster_centers[i][1] - cluster_centers[j][1]) ** 2 +
-                    (cluster_centers[i][2] - cluster_centers[j][2]) ** 2
-                ) ** 0.5
-                share_i = counts[i] / total
-                share_j = counts[j] / total
-                # Both clusters must be large (>25%) and far apart (>100) to be Multi
-                if dist > 100 and share_i > 0.25 and share_j > 0.25:
-                    # Extra check: are they actually different hues, not just light/dark?
-                    hue_diff = abs(
-                        (cluster_centers[i][0] - cluster_centers[i][2]) -
-                        (cluster_centers[j][0] - cluster_centers[j][2])
-                    )
-                    if hue_diff > 30:
-                        return "Multi"
+def classify_gender(image):
+    """Zero-shot CLIP gender over men/women. Returns 'men'/'women' only when
+    confident; None when uncertain (search then stays gender-agnostic)."""
+    probs = predict_clip_probs(image, labels=GENDER_LABELS)
+    best = int(np.argmax(probs))
+    if probs[best] >= GENDER_THRESHOLD:
+        return "men" if best == 0 else "women"
+    return None
 
-    # Use dominant cluster for color matching
-    dominant_idx = np.argmax(counts)
-    r, g, b = cluster_centers[dominant_idx]
-
-    # Nearest neighbor match against reference colors
-    best_label = None
-    best_dist = float("inf")
-
-    for label, (cr, cg, cb) in COLOR_REFERENCES.items():
-        if label == "Multi":
-            continue
-        dist = ((r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2) ** 0.5
-        if dist < best_dist:
-            best_dist = dist
-            best_label = label
-
-    return best_label
 
 def extract_attributes(image):
     subtype = predict_clip_labels(image, ARTICLE_TYPES)
-    gender_raw = predict_clip_labels(image, GENDER_LABELS)
-    color = detect_color(image)
-
-    gender = "women" if "women" in gender_raw else "men" if "men" in gender_raw else "unisex"
+    gender = classify_gender(image)  # 'men' / 'women' / None (uncertain)
+    color = classify_color(image)
 
     return {
         "subtype": subtype,

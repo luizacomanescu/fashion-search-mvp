@@ -1,0 +1,25 @@
+# Modeva backend — serves the API + built frontend.
+# Cloud Qdrant + Supabase creds injected at runtime via env
+# (App Runner env vars, `docker run -e`, or an uncommitted .env file).
+#
+# Scraping/sync is NOT here: the Hermes cron drives it from skills/<store>.md
+# (e.g. `python scripts/prepare_data.py --store zara-gb`), run in the local
+# venv — that's the durable control point, not this file.
+
+services:
+  backend:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ""   # prod: frontend calls same-origin ("")
+    image: modeva:local
+    ports:
+      - "8000:8000"
+    environment:
+      QDRANT_URL: ${QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+    # mount local dist for hot dev if present; harmless if absent
+    volumes:
+      - ./frontend/dist:/app/frontend/dist:ro

@@ -7,15 +7,15 @@ torchaudio==2.2.2
 transformers==4.38.2
 Pillow
 
-faiss-cpu
-
 fastapi
 uvicorn
-
-streamlit
-
-pandas
+python-multipart
 tqdm
 requests
 
 scikit-learn
+
+python-dotenv
+supabase
+
+qdrant-client

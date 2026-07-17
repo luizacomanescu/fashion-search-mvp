@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+index/
+data/
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Misc
+.git/
+.gitignore
+.DS_Store
+snippets/
+*.md
+!skills/**/*.md

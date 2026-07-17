@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from transformers import CLIPProcessor, CLIPModel
 
-MODEL_NAME = "openai/clip-vit-base-patch32"
+MODEL_NAME = "patrickjohncyh/fashion-clip"
 
 device = torch.device("cpu")
 
@@ -58,6 +58,19 @@ def predict_clip_labels(image, labels):
 
     probs = logits.softmax(dim=1)
     return labels[probs.argmax().item()]
+
+def predict_clip_probs(image, labels=None, texts=None):
+    """Softmax probs over CLIP text labels for an image.
+    Pass `labels` (auto-formatted as 'a photo of {l}') or pre-built `texts`."""
+    model, processor = load_model()
+    if texts is None:
+        texts = [f"a photo of {l}" for l in labels]
+    inputs = processor(text=texts, images=image, return_tensors="pt", padding=True)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    with torch.no_grad():
+        outputs = model(**inputs)
+        probs = outputs.logits_per_image.softmax(dim=1)[0].cpu().numpy()
+    return probs
 
 # ==================================
 # TEXT EMBEDDING

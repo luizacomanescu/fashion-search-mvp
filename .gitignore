@@ -12,3 +12,8 @@ venv/
 *.log
 
 data/
+
+scraper/
+snippets/
+
+.env

@@ -3,186 +3,169 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-import faiss
-import json
-import numpy as np
-from app.model import get_image_embedding
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
+from app.model import get_image_embedding, get_text_embedding
 from app.attribute_extractor import extract_attributes
+from dotenv import load_dotenv
 
-INDEX_PATH = "index/faiss.index"
-META_PATH = "index/meta.json"
-EMBEDDINGS_PATH = "index/embeddings.npy"
+load_dotenv()
 
-index = faiss.read_index(INDEX_PATH)
-with open(META_PATH) as f:
-    meta = json.load(f)
-embeddings = np.load(EMBEDDINGS_PATH)
+qdrant = QdrantClient(
+    url=os.environ.get("QDRANT_URL"),
+    api_key=os.environ.get("QDRANT_API_KEY"),
+)
 
-MAX_PER_STORE = 6
+COLLECTION_NAME = "products"
 
 SUBTYPE_GROUPS = {
     "T-shirt": ["T-shirt", "Top"],
-    "Shirt": ["Shirt", "Top", "Blouse"],
-    "Top": ["Top", "T-shirt", "Blouse"],
-    "Blouse": ["Blouse", "Top", "Shirt"],
-    "Cardigan": ["Cardigan", "Sweater"],
-    "Sweater": ["Sweater", "Cardigan"],
-    "Coat": ["Coat", "Jacket"],
-    "Jacket": ["Jacket", "Coat"],
+    "Shirt": ["Shirt", "Top"],
+    "Top": ["Top", "T-shirt"],
+    "Knitwear": ["Knitwear"],
+    "Sweatshirt": ["Sweatshirt", "Top"],
     "Jeans": ["Jeans", "Trousers"],
     "Trousers": ["Trousers", "Jeans"],
-    "Dress": ["Dress"],
-    "Skirt": ["Skirt"],
     "Shorts": ["Shorts"],
+    "Skirt": ["Skirt"],
+    "Dress": ["Dress"],
+    "Jacket": ["Jacket"],
 }
 
-
-def score_fn(attrs, item, faiss_score):
-    # category match — 25%
-    subtype_match = 1.0 if attrs.get("subtype") == item.get("subtype") else 0.0
-
-    # gender match — 10%
-    q_gender = attrs.get("gender", "unisex")
-    i_gender = item.get("gender", "unisex")
-    gender_match = 1.0 if q_gender == i_gender or i_gender == "unisex" else 0.0
-
-    # color match — 5%
-    q_color = (attrs.get("color") or "").lower().strip()
-    i_color = (item.get("color") or "").lower().strip()
-    if q_color and i_color:
-        if q_color == i_color:
-            color_match = 1.0
-        elif q_color in i_color or i_color in q_color:
-            color_match = 0.6
-        else:
-            color_match = 0.0
-    else:
-        color_match = 0.0
-
-    return (
-        0.65 * faiss_score +
-        0.25 * subtype_match +
-        0.10 * gender_match +
-        0.05 * color_match
-    )
+MAX_PER_STORE = 6
 
 
-def search_similar(image, top_k=24):
+def search_similar(image, top_k=24, gender_override=None):
     img = image.convert("RGB")
-    query_vec = get_image_embedding(img.copy()).astype("float32")
-    query_vec = np.expand_dims(query_vec, axis=0)
-    faiss.normalize_L2(query_vec)
 
     attrs = extract_attributes(img.copy())
     print("\n--- QUERY ATTRIBUTES ---", attrs)
 
     query_subtype = attrs.get("subtype")
-    query_gender = attrs.get("gender", "unisex")
 
-    # get related subtypes for broader matching
+    # Prefer an explicit user choice (UI selector); otherwise use the
+    # image-detected hint. None/uncertain means "search all genders"
+    # (avoids collapsing to the tiny unisex subset). An explicit "unisex"
+    # choice IS honoured as a hard filter -> returns only unisex stock.
+    if gender_override in ("men", "women", "unisex"):
+        query_gender = gender_override
+    else:
+        query_gender = attrs.get("gender") if attrs.get("gender") in ("men", "women") else None
+
     related_subtypes = SUBTYPE_GROUPS.get(query_subtype, [query_subtype])
     print(f"Related subtypes: {related_subtypes}")
 
-    # filter by related subtypes
-    filtered_ids = [
-        i for i, item in enumerate(meta)
-        if item.get("subtype") in related_subtypes
-        and (item.get("gender") == query_gender or item.get("gender") == "unisex")
+    image_emb = get_image_embedding(img.copy())
+    gender_text = query_gender if query_gender in ("men", "women") else ""
+    text = f"{query_subtype} {attrs.get('color', '')} {gender_text}".strip()
+    text_emb = get_text_embedding(text)
+    query_vec = ((image_emb + text_emb) / 2).astype("float32")
+
+    # build filter
+    must_conditions = [
+        FieldCondition(
+            key="subtype",
+            match=MatchAny(any=related_subtypes)
+        ),
     ]
-    print(f"Subtype: '{query_subtype}' | Gender: '{query_gender}' | Pool: {len(filtered_ids)}")
+    # Filter by gender when we have one. men/women also include unisex
+    # stock; an explicit unisex choice restricts to unisex only (empty
+    # until we stock unisex -> frontend shows the "no unisex yet" message).
+    if query_gender == "unisex":
+        must_conditions.append(
+            FieldCondition(key="gender", match=MatchValue(value="unisex"))
+        )
+    elif query_gender in ("men", "women"):
+        must_conditions.append(
+            FieldCondition(
+                key="gender",
+                match=MatchAny(any=[query_gender, "unisex"]),
+            )
+        )
 
-    # store distribution debug
-    store_distribution = {}
-    for i in filtered_ids:
-        store = meta[i].get("store")
-        store_distribution[store] = store_distribution.get(store, 0) + 1
-    print("Store distribution in pool:", store_distribution)
+    results = qdrant.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_vec.tolist(),
+        query_filter=Filter(must=must_conditions),
+        limit=200,
+        with_payload=True,
+    ).points
 
-    # fall back to group if pool too small
-    if len(filtered_ids) < 10:
-        query_group = meta[filtered_ids[0]].get("group") if filtered_ids else None
-        filtered_ids = [
-            i for i, item in enumerate(meta)
-            if item.get("group") == query_group
-        ]
-        print(f"Fell back to group '{query_group}' | Pool: {len(filtered_ids)}")
+    print(f"Qdrant returned {len(results)} candidates")
+    for r in results[:3]:
+        print(f"  - {r.payload.get('name')} | {r.payload.get('color')} | score: {r.score:.3f}")
 
-    # final fallback — search everything
-    if len(filtered_ids) < 10:
-        filtered_ids = list(range(len(meta)))
-        print("Fell back to full index")
-
-    sub_embeddings = np.array(
-        [embeddings[i] for i in filtered_ids], dtype="float32"
-    )
-
-    faiss.normalize_L2(sub_embeddings)
-    sub_index = faiss.IndexFlatIP(sub_embeddings.shape[1])
-    sub_index.add(sub_embeddings)
-
-    search_k = min(200, len(filtered_ids))
-    distances, indices = sub_index.search(query_vec, search_k)
-
-    seen = set()
-    candidates = []
-    for rank, idx in enumerate(indices[0]):
-        item_id = filtered_ids[idx]
-        if item_id in seen:
-            continue
-        seen.add(item_id)
-        item = meta[item_id]
-        candidates.append({
-            "item": item,
-            "faiss_score": float(distances[0][rank])
-        })
-
-    ranked = sorted(
-        candidates,
-        key=lambda x: score_fn(attrs, x["item"], x["faiss_score"]),
-        reverse=True
-    )
-
-    # cap results per store for diversity
+    # cap per store for diversity + dedup by product (same product can be
+    # indexed as multiple points -> never show it twice)
     store_counts = {}
-    top_ranked = []
+    seen_ids = set()
+    top_results = []
 
-    for x in ranked:
-        store = x["item"].get("store")
+    for r in results:
+        pid = r.payload.get("product_id")
+        if pid in seen_ids:
+            continue
+        store = r.payload.get("store")
         if store_counts.get(store, 0) >= MAX_PER_STORE:
             continue
         store_counts[store] = store_counts.get(store, 0) + 1
-        top_ranked.append(x)
-        if len(top_ranked) >= top_k:
+        seen_ids.add(pid)
+        top_results.append(r)
+        if len(top_results) >= top_k:
             break
 
-    # re-sort by score after store cap
-    top_ranked = sorted(top_ranked, key=lambda x: x["faiss_score"], reverse=True)
-
     # rescale scores
-    raw_scores = [x["faiss_score"] for x in top_ranked]
+    if not top_results:
+        return []
+
+    raw_scores = [r.score for r in top_results]
     min_score = min(raw_scores)
     max_score = max(raw_scores)
 
-    results = []
-    for x in top_ranked:
-        item = x["item"]
+    final_results = []
+    for r in top_results:
+        p = r.payload
 
         if max_score > min_score:
-            normalized = (x["faiss_score"] - min_score) / (max_score - min_score)
+            normalized = (r.score - min_score) / (max_score - min_score)
             match_pct = round(75 + normalized * 23)
         else:
             match_pct = 85
 
-        results.append({
-            "id": item.get("id"),
-            "name": item.get("name"),
-            "category": item.get("subtype"),
-            "color": item.get("color"),
-            "price": item.get("price"),
-            "store": item.get("store"),
-            "url": item.get("url"),
-            "image": item.get("image"),
+        final_results.append({
+            "id": p.get("product_id"),
+            "name": p.get("name"),
+            "category": p.get("subtype"),
+            "color": p.get("color"),
+            "price": p.get("price"),
+            "original_price": p.get("original_price"),
+            "currency_code": p.get("currency_code"),
+            "store": p.get("store"),
+            "url": p.get("url"),
+            "image": p.get("image"),
             "match": match_pct,
         })
 
-    return results
+    return final_results
+
+
+def list_stores():
+    """Distinct store names actually present in the collection, sorted.
+    Scrolls payloads (no vectors) so the UI only offers real stores."""
+    stores = set()
+    offset = None
+    while True:
+        points, offset = qdrant.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=1000,
+            offset=offset,
+            with_payload=["store"],
+            with_vectors=False,
+        )
+        for p in points:
+            s = (p.payload or {}).get("store")
+            if s:
+                stores.add(s)
+        if offset is None:
+            break
+    return sorted(stores)
