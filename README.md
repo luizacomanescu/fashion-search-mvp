@@ -97,6 +97,14 @@ Product data is scraped and indexed on a schedule (Hermes cron), driven by
 
 ## Deployment
 
+> **Access required.** Deploying requires AWS, Qdrant, and Supabase
+> credentials, which are **not** open to new users. If you need to run
+> or redeploy the app, ask an admin (Luiza) for access to the AWS
+> account, the Qdrant cloud instance, and the Supabase project — and
+> the `.env` file containing their connection secrets. Without these you
+> can still run the app locally (see *Local development*) against your
+> own empty Qdrant/Supabase, but you won't have product data.
+
 The app is containerised and served by AWS App Runner:
 
 1. `docker build` produces an image with the production frontend bundle and
@@ -105,6 +113,14 @@ The app is containerised and served by AWS App Runner:
 3. App Runner auto-deploys the new `:latest` tag.
 
 The public endpoint is https://xp42p2rr9p.eu-west-2.awsapprunner.com.
+
+## Local development without cloud access
+
+You can run the full stack locally, but you'll need your own Qdrant and
+Supabase instances (or run them locally) and a matching `.env`. The
+code runs fine with empty catalogues — you just won't see real products
+until data is loaded via the pipeline above. Ask an admin for the
+production `.env` if you need live data.
 
 ## Notes
 
