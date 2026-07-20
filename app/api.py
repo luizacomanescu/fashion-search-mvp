@@ -56,6 +56,12 @@ _HAS_DIST = os.path.isdir(_DIST)
 if _HAS_DIST:
     app.mount("/assets", StaticFiles(directory=os.path.join(_DIST, "assets")), name="assets")
 
+    @app.get("/favicon.png")
+    async def favicon():
+        # Served as a real file; otherwise the SPA fallback returns
+        # index.html (text/html) and Safari won't use it as a favicon.
+        return FileResponse(os.path.join(_DIST, "favicon.png"))
+
     @app.get("/")
     async def index():
         return FileResponse(os.path.join(_DIST, "index.html"))

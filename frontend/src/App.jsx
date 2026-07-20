@@ -235,6 +235,19 @@ export default function App() {
           padding: 80px 24px 80px;
         }
 
+        /* ── UPLOAD ENTRANCE (staggered, like Landing hero) ── */
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up { animation: fadeUp 0.6s ease both; }
+        .fade-up-1 { animation-delay: 0.08s; }
+        .fade-up-2 { animation-delay: 0.18s; }
+        .fade-up-3 { animation-delay: 0.28s; }
+        .fade-up-4 { animation-delay: 0.40s; }
+        .fade-up-5 { animation-delay: 0.52s; }
+        .fade-up-6 { animation-delay: 0.64s; }
+
         /* ── UPLOAD STATE ── */
         .upload-view {
           display: flex;
@@ -611,13 +624,13 @@ export default function App() {
       <main className="main">
         {!imageUrl && (
           <div className="upload-view">
-            <p className="upload-eyebrow">
+            <p className="upload-eyebrow fade-up fade-up-1">
               <SparkleIcon /> AI-powered
             </p>
-            <h1 className="upload-heading">
+            <h1 className="upload-heading fade-up fade-up-2">
               Find it by<br /><em>showing</em> it
             </h1>
-            <p className="upload-sub">
+            <p className="upload-sub fade-up fade-up-3">
               Upload any fashion photo. We'll find similar pieces<br />
               across your favourite stores in seconds.
             </p>
@@ -631,7 +644,7 @@ export default function App() {
             />
 
             <div
-              className={`drop-zone ${dragging ? "drag-over" : ""}`}
+              className={`drop-zone fade-up fade-up-4 ${dragging ? "drag-over" : ""}`}
               onClick={() => fileInputRef.current?.click()}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -646,7 +659,7 @@ export default function App() {
               <p className="drop-hint">JPEG, PNG, WEBP — up to 10 MB</p>
             </div>
 
-            <div className="gender-row">
+            <div className="gender-row fade-up fade-up-5">
               <span className="stores-label">Shopping for</span>
               <div className="filter-bar" style={{ marginBottom: 0, marginTop: 4 }}>
                 {GENDERS.map(g => (
@@ -662,7 +675,7 @@ export default function App() {
             </div>
 
             {availableStores.length > 0 && (
-              <div className="upload-stores">
+              <div className="upload-stores fade-up fade-up-6">
                 <span className="stores-label">Searches across</span>
                 {availableStores.map(s => (
                   <span key={s} className="store-tag">{s}</span>
